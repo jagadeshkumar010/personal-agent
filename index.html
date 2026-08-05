@@ -177,7 +177,7 @@
             }
         }
 
-        async function callGeminiAPI(prompt) {
+    async function callGeminiAPI(prompt) {
             const key = localStorage.getItem(STORAGE_KEY_API);
             if (!key) {
                 alert('Please enter and save your Gemini API Key first!');
@@ -194,10 +194,27 @@
                         contents: [{ parts: [{ text: prompt }] }]
                     })
                 });
+                
                 const data = await response.json();
-                return data.candidates[0].content.parts[0].text;
+
+                // Check for API Error response
+                if (data.error) {
+                    alert('API Error: ' + data.error.message);
+                    return null;
+                }
+
+                // Safely extract generated text across response formats
+                if (data.candidates && data.candidates.length > 0) {
+                    const candidate = data.candidates[0];
+                    if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
+                        return candidate.content.parts[0].text;
+                    }
+                }
+
+                alert('Unexpected response format from Gemini API.');
+                return null;
             } catch (err) {
-                alert('API Error: ' + err.message);
+                alert('Connection Error: ' + err.message);
                 return null;
             }
         }
