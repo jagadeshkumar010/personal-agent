@@ -106,9 +106,9 @@
     </div>
 
     <script>
-        // State Management via localStorage
         const STORAGE_KEY_API = 'agent_gemini_key';
         const STORAGE_KEY_TASKS = 'agent_daily_tasks';
+        const STORAGE_KEY_DATE = 'agent_tasks_date';
         const STORAGE_KEY_HISTORY = 'agent_history';
 
         function updateTime() {
@@ -126,10 +126,22 @@
             }
         }
 
+        function getTodayDateString() {
+            return new Date().toISOString().split('T')[0];
+        }
+
         // Initialize UI on page load
         window.onload = function() {
             const savedKey = localStorage.getItem(STORAGE_KEY_API);
             if (savedKey) document.getElementById('api-key').value = savedKey;
+
+            // Auto-check if stored tasks belong to a past date
+            const savedDate = localStorage.getItem(STORAGE_KEY_DATE);
+            const todayStr = getTodayDateString();
+            if (savedDate && savedDate !== todayStr) {
+                // Tasks are from yesterday or earlier, clear them for new day entry
+                localStorage.removeItem(STORAGE_KEY_TASKS);
+            }
 
             renderWorkflow();
             renderHistory();
@@ -137,11 +149,9 @@
 
         function renderWorkflow() {
             const container = document.getElementById('workflow-card');
-            const now = new Date();
-            const hour = now.getHours();
             const savedTasks = JSON.parse(localStorage.getItem(STORAGE_KEY_TASKS) || '[]');
 
-            // Morning Mode (Before 12 PM) or if no tasks set
+            // If no tasks saved for today, show Morning Routine input
             if (savedTasks.length === 0) {
                 container.innerHTML = `
                     <h2>🌅 Morning Routine (Set 3 MITs)</h2>
@@ -153,7 +163,7 @@
                     <div id="ai-response"></div>
                 `;
             } else {
-                // Evening Review Mode
+                // Show Evening Review card
                 let html = `<h2>🌙 Evening Progress Review</h2><div class="subtitle">Update status for today's tasks:</div>`;
                 savedTasks.forEach((t, i) => {
                     html += `
@@ -170,14 +180,14 @@
                 });
                 html += `
                     <button onclick="submitEveningReview()">Submit Review & Archive</button>
-                    <button onclick="resetTodayTasks()" style="background:#64748b; margin-top:4px;">Reset Today's Tasks</button>
+                    <button onclick="startNewDay()" style="background:#22c55e; color:#0f172a; margin-top:8px;">☀️ Start New Day (Enter New Tasks)</button>
                     <div id="ai-response"></div>
                 `;
                 container.innerHTML = html;
             }
         }
 
-    async function callGeminiAPI(prompt) {
+        async function callGeminiAPI(prompt) {
             const key = localStorage.getItem(STORAGE_KEY_API);
             if (!key) {
                 alert('Please enter and save your Gemini API Key first!');
@@ -197,13 +207,11 @@
                 
                 const data = await response.json();
 
-                // Check for API Error response
                 if (data.error) {
                     alert('API Error: ' + data.error.message);
                     return null;
                 }
 
-                // Safely extract generated text across response formats
                 if (data.candidates && data.candidates.length > 0) {
                     const candidate = data.candidates[0];
                     if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
@@ -236,6 +244,7 @@
             ];
 
             localStorage.setItem(STORAGE_KEY_TASKS, JSON.stringify(tasks));
+            localStorage.setItem(STORAGE_KEY_DATE, getTodayDateString());
             
             const respDiv = document.getElementById('ai-response');
             respDiv.innerHTML = '<div class="advice-box">Generating strategy...</div>';
@@ -244,8 +253,8 @@
             const advice = await callGeminiAPI(prompt);
 
             if (advice) {
-                respDiv.innerHTML = `<div class="advice-box"><strong>Agent Advice:</strong><br>${advice}</div>`;
-                setTimeout(renderWorkflow, 4000);
+                respDiv.innerHTML = `<div class="advice-box"><strong>Agent Strategy:</strong><br>${advice}</div>`;
+                setTimeout(renderWorkflow, 3500);
             }
         }
 
@@ -253,16 +262,17 @@
             const savedTasks = JSON.parse(localStorage.getItem(STORAGE_KEY_TASKS) || '[]');
             
             savedTasks.forEach((t, i) => {
-                t.status = document.getElementById(`status-${i}`).value;
-                t.notes = document.getElementById(`note-${i}`).value.trim() || (t.status === 'Completed' ? 'Done' : 'None');
+                const statusEl = document.getElementById(`status-${i}`);
+                const noteEl = document.getElementById(`note-${i}`);
+                if (statusEl) t.status = statusEl.value;
+                if (noteEl) t.notes = noteEl.value.trim() || (t.status === 'Completed' ? 'Done' : 'None');
             });
 
-            // Save updated tasks
             localStorage.setItem(STORAGE_KEY_TASKS, JSON.stringify(savedTasks));
 
             // Archive to History
             const history = JSON.parse(localStorage.getItem(STORAGE_KEY_HISTORY) || '[]');
-            const todayStr = new Date().toISOString().split('T')[0];
+            const todayStr = getTodayDateString();
             
             const existingIndex = history.findIndex(h => h.date === todayStr);
             if (existingIndex >= 0) {
@@ -274,7 +284,6 @@
             localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(history));
             renderHistory();
 
-            // Fetch EOD Review
             const respDiv = document.getElementById('ai-response');
             respDiv.innerHTML = '<div class="advice-box">Analyzing performance...</div>';
 
@@ -282,15 +291,17 @@
             const advice = await callGeminiAPI(prompt);
 
             if (advice) {
-                respDiv.innerHTML = `<div class="advice-box"><strong>EOD Analysis:</strong><br>${advice}</div>`;
+                respDiv.innerHTML = `
+                    <div class="advice-box"><strong>EOD Analysis:</strong><br>${advice}</div>
+                    <button onclick="startNewDay()" style="background:#22c55e; color:#0f172a; margin-top:12px;">Ready for Tomorrow? Click to Start New Day</button>
+                `;
             }
         }
 
-        function resetTodayTasks() {
-            if (confirm("Reset today's tasks to enter new ones?")) {
-                localStorage.removeItem(STORAGE_KEY_TASKS);
-                renderWorkflow();
-            }
+        function startNewDay() {
+            localStorage.removeItem(STORAGE_KEY_TASKS);
+            localStorage.removeItem(STORAGE_KEY_DATE);
+            renderWorkflow();
         }
 
         function renderHistory() {
@@ -303,7 +314,8 @@
             }
 
             let html = '';
-            history.reverse().forEach(entry => {
+            // Display most recent dates first
+            [...history].reverse().forEach(entry => {
                 html += `<div class="history-entry"><strong>${entry.date}</strong><br>`;
                 entry.tasks.forEach(t => {
                     html += `• ${t.task} [${t.status}] ${t.notes ? '(' + t.notes + ')' : ''}<br>`;
