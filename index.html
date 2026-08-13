@@ -12,6 +12,8 @@
             --text: #f8fafc;
             --muted: #94a3b8;
             --success: #22c55e;
+            --danger: #ef4444;
+            --warning: #f59e0b;
         }
 
         body {
@@ -55,9 +57,15 @@
             border: none;
             cursor: pointer;
             transition: opacity 0.2s;
+            border-radius: 8px;
         }
 
         button:active { opacity: 0.8; }
+
+        .btn-success { background-color: var(--success); color: #0f172a; }
+        .btn-danger { background-color: var(--danger); color: white; }
+        .btn-warning { background-color: var(--warning); color: #0f172a; }
+        .btn-secondary { background-color: #475569; color: var(--text); }
 
         .advice-box {
             background: #0f172a;
@@ -81,6 +89,43 @@
             margin-bottom: 12px;
             font-size: 0.85rem;
         }
+
+        .alarm-banner {
+            background: var(--warning);
+            color: #0f172a;
+            padding: 12px;
+            border-radius: 8px;
+            font-weight: bold;
+            text-align: center;
+            display: none;
+            margin-bottom: 12px;
+        }
+
+        .audio-controls, .filter-controls {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+        }
+        .audio-controls button, .filter-controls button { 
+            margin: 0; 
+            font-size: 0.85rem; 
+            padding: 8px 12px; 
+            width: auto;
+            flex: 1;
+        }
+
+        .music-bar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: #0f172a;
+            padding: 8px 12px;
+            border-radius: 8px;
+            margin-top: 8px;
+        }
+        .music-bar label { font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
+        .music-bar input[type="range"] { margin: 0; width: 100px; }
     </style>
 </head>
 <body>
@@ -90,19 +135,63 @@
         <h1>📱 Personal Productivity Agent</h1>
         <div class="subtitle" id="current-time"></div>
         <input type="password" id="api-key" placeholder="Enter Gemini API Key (Saved locally)">
-        <button onclick="saveApiKey()">Save Key</button>
+        <button onclick="saveApiKey()">Save API Key</button>
+
+        <!-- Relaxing Background Music Player -->
+        <div class="music-bar">
+            <span style="font-size: 1.2rem;">🎵</span>
+            <div style="flex:1;">
+                <div id="music-title" style="font-size: 0.85rem; font-weight: bold;">Background Relaxing Music</div>
+                <div id="music-status" class="subtitle" style="margin:0;">Status: Paused</div>
+            </div>
+            <button onclick="toggleMusic()" id="music-play-btn" style="width: auto; padding: 6px 12px;">▶️ Play</button>
+            <button onclick="playRandomMusic()" style="width: auto; padding: 6px 12px;" class="btn-secondary">🔀 Next</button>
+            <label for="volume-control">Vol:</label>
+            <input type="range" id="volume-control" min="0" max="1" step="0.05" value="0.3" onchange="adjustVolume(this.value)">
+        </div>
+        <audio id="bg-music" loop></audio>
+    </div>
+
+    <!-- Morning Alarm Configuration Card -->
+    <div class="card">
+        <h3>⏰ Morning Alarm Settings (9:00 AM IST)</h3>
+        <div class="subtitle">Record your voice message to play when the 9:00 AM alarm triggers:</div>
+        
+        <div class="audio-controls">
+            <button id="rec-btn" onclick="toggleRecording()" class="btn-warning">🎙️ Record Message</button>
+            <button id="play-btn" onclick="playVoiceMessage()" style="display:none;">▶️ Play Message</button>
+            <button id="test-alarm-btn" onclick="triggerMorningAlarm(true)">🔔 Test Alarm</button>
+        </div>
+        <div id="recording-status" class="subtitle">Status: No voice message recorded.</div>
+        <audio id="audio-preview" controls style="display:none; width:100%; margin-top:8px;"></audio>
     </div>
 
     <!-- Active Workflow Card -->
     <div class="card" id="workflow-card">
+        <div id="alarm-banner" class="alarm-banner">⏰ 9:00 AM IST! Time to log your Most Important Tasks!</div>
         <!-- Content injected dynamically via JavaScript -->
     </div>
 
-    <!-- History Log -->
+    <!-- History Log & Search/Filter Section -->
     <div class="card">
-        <h3>📜 Archived History</h3>
-        <div id="history-list" class="subtitle">No archived logs yet.</div>
-        <button onclick="clearHistory()" style="background:#ef4444; color:white; font-size:0.8rem; padding:6px;">Clear History</button>
+        <h3>📜 Archived History & Analytics</h3>
+        
+        <input type="text" id="search-history" placeholder="🔍 Search past tasks or notes..." oninput="filterHistory()">
+        
+        <div class="filter-controls">
+            <select id="status-filter" onchange="filterHistory()" style="margin:0; flex:1;">
+                <option value="ALL">All Statuses</option>
+                <option value="Completed">Completed</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Not Started">Not Started</option>
+            </select>
+            <button onclick="analyzeTaskPatterns()" class="btn-warning" style="flex:1;">📊 AI Pattern Analysis</button>
+        </div>
+
+        <div id="pattern-analysis-output"></div>
+        <div id="history-list" class="subtitle" style="margin-top:12px;">No archived logs yet.</div>
+        
+        <button onclick="clearHistory()" class="btn-danger" style="font-size:0.8rem; padding:6px; margin-top:12px;">Clear History</button>
     </div>
 
     <script>
@@ -110,13 +199,199 @@
         const STORAGE_KEY_TASKS = 'agent_daily_tasks';
         const STORAGE_KEY_DATE = 'agent_tasks_date';
         const STORAGE_KEY_HISTORY = 'agent_history';
+        const STORAGE_KEY_VOICE = 'agent_voice_message';
+        const STORAGE_KEY_ALARM_FIRED = 'agent_alarm_last_fired';
 
+        let mediaRecorder;
+        let audioChunks = [];
+
+        // --- BACKGROUND MUSIC PLAYLIST (Royalty Free) ---
+        const playlist = [
+            { name: "Quiet Relaxation Ambient", url: "https://upload.wikimedia.org/wikipedia/commons/3/34/Sound_Of_Rain_On_Roof.ogg" },
+            { name: "Peaceful Water Flow", url: "https://upload.wikimedia.org/wikipedia/commons/5/52/Gentle_stream_in_forest.ogg" },
+            { name: "Calm Nature Ambiance", url: "https://upload.wikimedia.org/wikipedia/commons/b/b5/Bird_chirping_in_the_forest.ogg" }
+        ];
+        let currentTrackIndex = 0;
+
+        function initMusic() {
+            const audio = document.getElementById('bg-music');
+            audio.volume = 0.3;
+            playTrack(0);
+        }
+
+        function playTrack(index) {
+            currentTrackIndex = index;
+            const audio = document.getElementById('bg-music');
+            const track = playlist[currentTrackIndex];
+            audio.src = track.url;
+            document.getElementById('music-title').innerText = track.name;
+        }
+
+        function toggleMusic() {
+            const audio = document.getElementById('bg-music');
+            const btn = document.getElementById('music-play-btn');
+            const status = document.getElementById('music-status');
+
+            if (audio.paused) {
+                audio.play().then(() => {
+                    btn.innerText = "⏸️ Pause";
+                    status.innerText = "Status: Playing";
+                }).catch(e => alert("Click Play again to start audio: " + e.message));
+            } else {
+                audio.pause();
+                btn.innerText = "▶️ Play";
+                status.innerText = "Status: Paused";
+            }
+        }
+
+        function playRandomMusic() {
+            let nextIndex;
+            do {
+                nextIndex = Math.floor(Math.random() * playlist.length);
+            } while (nextIndex === currentTrackIndex && playlist.length > 1);
+
+            playTrack(nextIndex);
+            const audio = document.getElementById('bg-music');
+            audio.play().then(() => {
+                document.getElementById('music-play-btn').innerText = "⏸️ Pause";
+                document.getElementById('music-status').innerText = "Status: Playing";
+            });
+        }
+
+        function adjustVolume(val) {
+            const audio = document.getElementById('bg-music');
+            audio.volume = val;
+        }
+
+        // --- TIME & ALARM CHECKER ---
         function updateTime() {
             const now = new Date();
-            document.getElementById('current-time').innerText = now.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + ' IST';
+            const timeStr = now.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + ' IST';
+            document.getElementById('current-time').innerText = timeStr;
+
+            const options = { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false };
+            const istTimeString = new Intl.DateTimeFormat('en-US', options).format(now);
+            const todayDateStr = getTodayDateString();
+            const lastFired = localStorage.getItem(STORAGE_KEY_ALARM_FIRED);
+
+            if (istTimeString === "09:00" && lastFired !== todayDateStr) {
+                localStorage.setItem(STORAGE_KEY_ALARM_FIRED, todayDateStr);
+                triggerMorningAlarm(false);
+            }
         }
         setInterval(updateTime, 1000);
-        updateTime();
+
+        function playAlarmChime() {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+                osc.frequency.setValueAtTime(880, ctx.currentTime + 0.2);
+                gain.gain.setValueAtTime(0.3, ctx.currentTime);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start();
+                osc.stop(ctx.currentTime + 0.8);
+            } catch (e) { console.log('Web Audio API not supported'); }
+        }
+
+        function triggerMorningAlarm(isTest = false) {
+            playAlarmChime();
+            
+            const banner = document.getElementById('alarm-banner');
+            if (banner) {
+                banner.style.display = 'block';
+                banner.innerText = isTest ? "🔔 Test Alarm Triggered!" : "⏰ 9:00 AM IST! Time to set your MITs for today!";
+            }
+
+            const savedAudioData = localStorage.getItem(STORAGE_KEY_VOICE);
+            if (savedAudioData) {
+                const audio = new Audio(savedAudioData);
+                audio.play();
+            } else {
+                const msg = new SpeechSynthesisUtterance("Good morning! It is 9 AM. Time to enter your tasks for today.");
+                window.speechSynthesis.speak(msg);
+            }
+
+            if (!isTest) startNewDay();
+        }
+
+        // --- VOICE RECORDING FUNCTIONALITY ---
+        async function toggleRecording() {
+            const btn = document.getElementById('rec-btn');
+            const status = document.getElementById('recording-status');
+
+            if (mediaRecorder && mediaRecorder.state === "recording") {
+                mediaRecorder.stop();
+                btn.innerText = "🎙️ Record Message";
+                btn.className = "btn-warning";
+                status.innerText = "Status: Recording complete & saved!";
+            } else {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(stream);
+                    audioChunks = [];
+
+                    mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
+                    mediaRecorder.onstop = () => {
+                        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                        const reader = new FileReader();
+                        reader.readAsDataURL(audioBlob);
+                        reader.onloadend = () => {
+                            const base64Audio = reader.result;
+                            localStorage.setItem(STORAGE_KEY_VOICE, base64Audio);
+                            document.getElementById('play-btn').style.display = 'inline-block';
+                            const preview = document.getElementById('audio-preview');
+                            preview.src = base64Audio;
+                            preview.style.display = 'block';
+                        };
+                    };
+
+                    mediaRecorder.start();
+                    btn.innerText = "🛑 Stop Recording";
+                    btn.className = "btn-danger";
+                    status.innerText = "Status: Recording custom alarm message...";
+                } catch (err) {
+                    alert('Microphone access denied: ' + err.message);
+                }
+            }
+        }
+
+        function playVoiceMessage() {
+            const savedAudioData = localStorage.getItem(STORAGE_KEY_VOICE);
+            if (savedAudioData) {
+                const audio = new Audio(savedAudioData);
+                audio.play();
+            }
+        }
+
+        // --- INITIALIZATION ---
+        window.onload = function() {
+            const savedKey = localStorage.getItem(STORAGE_KEY_API);
+            if (savedKey) document.getElementById('api-key').value = savedKey;
+
+            const savedAudio = localStorage.getItem(STORAGE_KEY_VOICE);
+            if (savedAudio) {
+                document.getElementById('recording-status').innerText = "Status: Custom voice message saved.";
+                document.getElementById('play-btn').style.display = 'inline-block';
+                const preview = document.getElementById('audio-preview');
+                preview.src = savedAudio;
+                preview.style.display = 'block';
+            }
+
+            const savedDate = localStorage.getItem(STORAGE_KEY_DATE);
+            const todayStr = getTodayDateString();
+            if (savedDate && savedDate !== todayStr) {
+                localStorage.removeItem(STORAGE_KEY_TASKS);
+            }
+
+            initMusic();
+            renderWorkflow();
+            renderHistory();
+            updateTime();
+        };
 
         function saveApiKey() {
             const key = document.getElementById('api-key').value.trim();
@@ -130,44 +405,65 @@
             return new Date().toISOString().split('T')[0];
         }
 
-        // Initialize UI on page load
-        window.onload = function() {
-            const savedKey = localStorage.getItem(STORAGE_KEY_API);
-            if (savedKey) document.getElementById('api-key').value = savedKey;
+        // --- DYNAMIC TASK ADDITION ---
+        function addMorningTaskField() {
+            const container = document.getElementById('morning-tasks-container');
+            const currentCount = container.querySelectorAll('input').length;
+            const newInput = document.createElement('input');
+            newInput.type = 'text';
+            newInput.placeholder = `Task ${currentCount + 1}`;
+            newInput.className = 'morning-task-input';
+            container.appendChild(newInput);
+        }
 
-            // Auto-check if stored tasks belong to a past date
-            const savedDate = localStorage.getItem(STORAGE_KEY_DATE);
-            const todayStr = getTodayDateString();
-            if (savedDate && savedDate !== todayStr) {
-                // Tasks are from yesterday or earlier, clear them for new day entry
-                localStorage.removeItem(STORAGE_KEY_TASKS);
-            }
+        function addEveningTaskField() {
+            const container = document.getElementById('evening-tasks-container');
+            const currentTasks = container.querySelectorAll('.task-item').length;
+            const newIndex = currentTasks;
 
-            renderWorkflow();
-            renderHistory();
-        };
+            const taskDiv = document.createElement('div');
+            taskDiv.className = 'task-item';
+            taskDiv.innerHTML = `
+                <input type="text" id="new-task-name-${newIndex}" placeholder="Additional Task Name">
+                <select id="status-${newIndex}">
+                    <option value="Completed">Completed</option>
+                    <option value="In Progress" selected>In Progress</option>
+                    <option value="Not Started">Not Started</option>
+                </select>
+                <input type="text" id="note-${newIndex}" placeholder="Bottleneck / Note">
+            `;
+            container.appendChild(taskDiv);
+        }
 
+        // --- WORKFLOW RENDERING ---
         function renderWorkflow() {
             const container = document.getElementById('workflow-card');
             const savedTasks = JSON.parse(localStorage.getItem(STORAGE_KEY_TASKS) || '[]');
 
-            // If no tasks saved for today, show Morning Routine input
             if (savedTasks.length === 0) {
                 container.innerHTML = `
-                    <h2>🌅 Morning Routine (Set 3 MITs)</h2>
-                    <div class="subtitle">What are your top 3 goals for today?</div>
-                    <input type="text" id="task1" placeholder="Task 1">
-                    <input type="text" id="task2" placeholder="Task 2">
-                    <input type="text" id="task3" placeholder="Task 3">
+                    <div id="alarm-banner" class="alarm-banner">⏰ 9:00 AM IST! Time to log your Most Important Tasks!</div>
+                    <h2>🌅 Morning Planning</h2>
+                    <div class="subtitle">Set your key goals for today:</div>
+                    <div id="morning-tasks-container">
+                        <input type="text" class="morning-task-input" placeholder="Task 1">
+                        <input type="text" class="morning-task-input" placeholder="Task 2">
+                        <input type="text" class="morning-task-input" placeholder="Task 3">
+                    </div>
+                    <button onclick="addMorningTaskField()" class="btn-secondary" style="margin-bottom:8px;">➕ Add Additional Task</button>
                     <button onclick="submitMorningTasks()">Save Tasks & Get AI Strategy</button>
                     <div id="ai-response"></div>
                 `;
             } else {
-                // Show Evening Review card
-                let html = `<h2>🌙 Evening Progress Review</h2><div class="subtitle">Update status for today's tasks:</div>`;
+                let html = `
+                    <div id="alarm-banner" class="alarm-banner">⏰ 9:00 AM IST! Time to log your Most Important Tasks!</div>
+                    <h2>🌙 Evening Progress Review</h2>
+                    <div class="subtitle">Update status for today's tasks:</div>
+                    <div id="evening-tasks-container">
+                `;
                 savedTasks.forEach((t, i) => {
                     html += `
-                        <div class="task-item">
+                        <div class="task-item" data-existing="true">
                             <strong>${i+1}. ${t.task}</strong>
                             <select id="status-${i}">
                                 <option value="Completed" ${t.status === 'Completed' ? 'selected' : ''}>Completed</option>
@@ -179,14 +475,17 @@
                     `;
                 });
                 html += `
+                    </div>
+                    <button onclick="addEveningTaskField()" class="btn-secondary" style="margin-bottom:8px;">➕ Add Unplanned Task Done Today</button>
                     <button onclick="submitEveningReview()">Submit Review & Archive</button>
-                    <button onclick="startNewDay()" style="background:#22c55e; color:#0f172a; margin-top:8px;">☀️ Start New Day (Enter New Tasks)</button>
+                    <button onclick="startNewDay()" class="btn-success" style="margin-top:8px;">☀️ Start New Day</button>
                     <div id="ai-response"></div>
                 `;
                 container.innerHTML = html;
             }
         }
 
+        // --- GEMINI API CALL ---
         async function callGeminiAPI(prompt) {
             const key = localStorage.getItem(STORAGE_KEY_API);
             if (!key) {
@@ -194,15 +493,13 @@
                 return null;
             }
 
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${key}`;
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`;
             
             try {
                 const response = await fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{ parts: [{ text: prompt }] }]
-                    })
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
                 });
                 
                 const data = await response.json();
@@ -228,20 +525,20 @@
         }
 
         async function submitMorningTasks() {
-            const t1 = document.getElementById('task1').value.trim();
-            const t2 = document.getElementById('task2').value.trim();
-            const t3 = document.getElementById('task3').value.trim();
+            const inputs = document.querySelectorAll('.morning-task-input');
+            const tasks = [];
 
-            if (!t1 || !t2 || !t3) {
-                alert('Please enter all 3 tasks.');
+            inputs.forEach((inp, idx) => {
+                const val = inp.value.trim();
+                if (val) {
+                    tasks.push({ id: idx + 1, task: val, status: 'Pending', notes: '' });
+                }
+            });
+
+            if (tasks.length === 0) {
+                alert('Please enter at least one task.');
                 return;
             }
-
-            const tasks = [
-                { id: 1, task: t1, status: 'Pending', notes: '' },
-                { id: 2, task: t2, status: 'Pending', notes: '' },
-                { id: 3, task: t3, status: 'Pending', notes: '' }
-            ];
 
             localStorage.setItem(STORAGE_KEY_TASKS, JSON.stringify(tasks));
             localStorage.setItem(STORAGE_KEY_DATE, getTodayDateString());
@@ -249,7 +546,8 @@
             const respDiv = document.getElementById('ai-response');
             respDiv.innerHTML = '<div class="advice-box">Generating strategy...</div>';
 
-            const prompt = `I have 3 main tasks today: ${JSON.stringify([t1, t2, t3])}. Give me a 2-sentence practical focus strategy.`;
+            const taskTitles = tasks.map(t => t.task);
+            const prompt = `I have ${tasks.length} main tasks today: ${JSON.stringify(taskTitles)}. Give me a 2-sentence practical focus strategy.`;
             const advice = await callGeminiAPI(prompt);
 
             if (advice) {
@@ -259,26 +557,38 @@
         }
 
         async function submitEveningReview() {
-            const savedTasks = JSON.parse(localStorage.getItem(STORAGE_KEY_TASKS) || '[]');
-            
-            savedTasks.forEach((t, i) => {
+            const container = document.getElementById('evening-tasks-container');
+            const taskItems = container.querySelectorAll('.task-item');
+            const updatedTasks = [];
+
+            taskItems.forEach((item, i) => {
+                const nameEl = item.querySelector('strong');
+                let taskName = nameEl ? nameEl.innerText.replace(/^\d+\.\s*/, '') : '';
+                
+                const newNameInp = document.getElementById(`new-task-name-${i}`);
+                if (newNameInp) taskName = newNameInp.value.trim();
+
                 const statusEl = document.getElementById(`status-${i}`);
                 const noteEl = document.getElementById(`note-${i}`);
-                if (statusEl) t.status = statusEl.value;
-                if (noteEl) t.notes = noteEl.value.trim() || (t.status === 'Completed' ? 'Done' : 'None');
+                
+                const status = statusEl ? statusEl.value : 'Completed';
+                const notes = noteEl ? noteEl.value.trim() : '';
+
+                if (taskName) {
+                    updatedTasks.push({ id: i + 1, task: taskName, status: status, notes: notes || (status === 'Completed' ? 'Done' : 'None') });
+                }
             });
 
-            localStorage.setItem(STORAGE_KEY_TASKS, JSON.stringify(savedTasks));
+            localStorage.setItem(STORAGE_KEY_TASKS, JSON.stringify(updatedTasks));
 
-            // Archive to History
             const history = JSON.parse(localStorage.getItem(STORAGE_KEY_HISTORY) || '[]');
             const todayStr = getTodayDateString();
             
             const existingIndex = history.findIndex(h => h.date === todayStr);
             if (existingIndex >= 0) {
-                history[existingIndex].tasks = savedTasks;
+                history[existingIndex].tasks = updatedTasks;
             } else {
-                history.push({ date: todayStr, tasks: savedTasks });
+                history.push({ date: todayStr, tasks: updatedTasks });
             }
             
             localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(history));
@@ -287,13 +597,13 @@
             const respDiv = document.getElementById('ai-response');
             respDiv.innerHTML = '<div class="advice-box">Analyzing performance...</div>';
 
-            const prompt = `Here is my EOD task execution summary: ${JSON.stringify(savedTasks)}. Give me a 2-sentence encouraging review and a tip for tomorrow.`;
+            const prompt = `Here is my EOD task execution summary: ${JSON.stringify(updatedTasks)}. Give me a 2-sentence encouraging review and a tip for tomorrow.`;
             const advice = await callGeminiAPI(prompt);
 
             if (advice) {
                 respDiv.innerHTML = `
                     <div class="advice-box"><strong>EOD Analysis:</strong><br>${advice}</div>
-                    <button onclick="startNewDay()" style="background:#22c55e; color:#0f172a; margin-top:12px;">Ready for Tomorrow? Click to Start New Day</button>
+                    <button onclick="startNewDay()" class="btn-success" style="margin-top:12px;">Ready for Tomorrow? Click to Start New Day</button>
                 `;
             }
         }
@@ -304,25 +614,68 @@
             renderWorkflow();
         }
 
-        function renderHistory() {
-            const history = JSON.parse(localStorage.getItem(STORAGE_KEY_HISTORY) || '[]');
+        // --- HISTORY, SEARCH & CATEGORY FILTERING ---
+        function renderHistory(filteredHistory = null) {
+            const history = filteredHistory || JSON.parse(localStorage.getItem(STORAGE_KEY_HISTORY) || '[]');
             const container = document.getElementById('history-list');
 
             if (history.length === 0) {
-                container.innerHTML = 'No archived logs yet.';
+                container.innerHTML = 'No archived logs found matching criteria.';
                 return;
             }
 
             let html = '';
-            // Display most recent dates first
             [...history].reverse().forEach(entry => {
-                html += `<div class="history-entry"><strong>${entry.date}</strong><br>`;
-                entry.tasks.forEach(t => {
-                    html += `• ${t.task} [${t.status}] ${t.notes ? '(' + t.notes + ')' : ''}<br>`;
-                });
-                html += `</div>`;
+                if (entry.tasks && entry.tasks.length > 0) {
+                    html += `<div class="history-entry"><strong>${entry.date}</strong><br>`;
+                    entry.tasks.forEach(t => {
+                        html += `• ${t.task} [<span style="color:var(--accent);">${t.status}</span>] ${t.notes ? '(' + t.notes + ')' : ''}<br>`;
+                    });
+                    html += `</div>`;
+                }
             });
-            container.innerHTML = html;
+            container.innerHTML = html || 'No tasks match selected status.';
+        }
+
+        function filterHistory() {
+            const query = document.getElementById('search-history').value.toLowerCase().trim();
+            const selectedStatus = document.getElementById('status-filter').value;
+            const fullHistory = JSON.parse(localStorage.getItem(STORAGE_KEY_HISTORY) || '[]');
+
+            const filtered = fullHistory.map(entry => {
+                const matchingTasks = entry.tasks.filter(t => {
+                    const matchesQuery = t.task.toLowerCase().includes(query) || (t.notes && t.notes.toLowerCase().includes(query));
+                    const matchesStatus = selectedStatus === 'ALL' || t.status === selectedStatus;
+                    return matchesQuery && matchesStatus;
+                });
+                return { date: entry.date, tasks: matchingTasks };
+            }).filter(entry => entry.tasks.length > 0);
+
+            renderHistory(filtered);
+        }
+
+        // --- AI HISTORICAL PATTERN ANALYSIS ---
+        async function analyzeTaskPatterns() {
+            const history = JSON.parse(localStorage.getItem(STORAGE_KEY_HISTORY) || '[]');
+            const outputDiv = document.getElementById('pattern-analysis-output');
+
+            if (history.length < 1) {
+                alert('Save at least 1 day of completed task history to run pattern analysis.');
+                return;
+            }
+
+            outputDiv.innerHTML = '<div class="advice-box">Analyzing historical work trends and identifying bottlenecks...</div>';
+
+            const prompt = `Here is my historical task log across past days: ${JSON.stringify(history)}. 
+            Identify:
+            1. Recurring bottlenecks or reasons for incomplete work.
+            2. Top 2 specific areas of improvement to increase my completion rate.
+            Keep the output under 4 bullet points.`;
+
+            const analysis = await callGeminiAPI(prompt);
+            if (analysis) {
+                outputDiv.innerHTML = `<div class="advice-box"><strong>💡 AI Performance & Improvement Analysis:</strong><br>${analysis.replace(/\n/g, '<br>')}</div>`;
+            }
         }
 
         function clearHistory() {
