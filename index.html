@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Personal Productivity Agent</title>
+    <title>JKK Productivity Agent v2.4</title>
     <style>
         :root {
             --bg: #0f172a;
@@ -120,7 +120,7 @@
 
     <!-- Header & Setup -->
     <div class="card">
-        <h1>📱 Personal Productivity Agent</h1>
+        <h1>⚡ JKK Productivity Agent <span style="font-size: 0.9rem; color: var(--accent);">v2.4</span></h1>
         <div class="subtitle" id="current-time"></div>
         <input type="password" id="api-key" placeholder="Enter Gemini API Key (Saved locally)">
         <button onclick="saveApiKey()">Save API Key</button>
@@ -169,12 +169,12 @@
     </div>
 
     <script>
-        const STORAGE_KEY_API = 'agent_gemini_key';
-        const STORAGE_KEY_TASKS = 'agent_daily_tasks';
-        const STORAGE_KEY_DATE = 'agent_tasks_date';
-        const STORAGE_KEY_HISTORY = 'agent_history';
-        const STORAGE_KEY_VOICE = 'agent_voice_message';
-        const STORAGE_KEY_ALARM_FIRED = 'agent_alarm_last_fired';
+        const STORAGE_KEY_API = 'jkk_agent_gemini_key';
+        const STORAGE_KEY_TASKS = 'jkk_agent_daily_tasks';
+        const STORAGE_KEY_DATE = 'jkk_agent_tasks_date';
+        const STORAGE_KEY_HISTORY = 'jkk_agent_history';
+        const STORAGE_KEY_VOICE = 'jkk_agent_voice_message';
+        const STORAGE_KEY_ALARM_FIRED = 'jkk_agent_alarm_last_fired';
 
         let mediaRecorder;
         let audioChunks = [];
@@ -408,7 +408,7 @@
                 return null;
             }
 
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${key}`;
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`;
             
             try {
                 const response = await fetch(url, {
