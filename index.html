@@ -114,18 +114,6 @@
             width: auto;
             flex: 1;
         }
-
-        .music-bar {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            background: #0f172a;
-            padding: 8px 12px;
-            border-radius: 8px;
-            margin-top: 8px;
-        }
-        .music-bar label { font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
-        .music-bar input[type="range"] { margin: 0; width: 100px; }
     </style>
 </head>
 <body>
@@ -136,20 +124,6 @@
         <div class="subtitle" id="current-time"></div>
         <input type="password" id="api-key" placeholder="Enter Gemini API Key (Saved locally)">
         <button onclick="saveApiKey()">Save API Key</button>
-
-        <!-- Relaxing Background Music Player -->
-        <div class="music-bar">
-            <span style="font-size: 1.2rem;">🎵</span>
-            <div style="flex:1;">
-                <div id="music-title" style="font-size: 0.85rem; font-weight: bold;">Background Relaxing Music</div>
-                <div id="music-status" class="subtitle" style="margin:0;">Status: Paused</div>
-            </div>
-            <button onclick="toggleMusic()" id="music-play-btn" style="width: auto; padding: 6px 12px;">▶️ Play</button>
-            <button onclick="playRandomMusic()" style="width: auto; padding: 6px 12px;" class="btn-secondary">🔀 Next</button>
-            <label for="volume-control">Vol:</label>
-            <input type="range" id="volume-control" min="0" max="1" step="0.05" value="0.3" onchange="adjustVolume(this.value)">
-        </div>
-        <audio id="bg-music" loop></audio>
     </div>
 
     <!-- Morning Alarm Configuration Card -->
@@ -204,74 +178,6 @@
 
         let mediaRecorder;
         let audioChunks = [];
-
-        // --- BACKGROUND MUSIC PLAYLIST (Royalty Free) ---
-// --- BACKGROUND MUSIC PLAYLIST (Universal MP3 Format) ---
-        const playlist = [
-            { 
-                name: "Relaxing Rain & Thunder", 
-                url: "https://cdn.pixabay.com/download/audio/2022/05/16/audio_db6591201e.mp3" 
-            },
-            { 
-                name: "Peaceful Forest Stream", 
-                url: "https://cdn.pixabay.com/download/audio/2021/09/06/audio_8b2849ecaa.mp3" 
-            },
-            { 
-                name: "Calm Meditation Ambiance", 
-                url: "https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3" 
-            }
-        ];
-        let currentTrackIndex = 0;
-
-        function initMusic() {
-            const audio = document.getElementById('bg-music');
-            audio.volume = 0.3;
-            playTrack(0);
-        }
-
-        function playTrack(index) {
-            currentTrackIndex = index;
-            const audio = document.getElementById('bg-music');
-            const track = playlist[currentTrackIndex];
-            audio.src = track.url;
-            document.getElementById('music-title').innerText = track.name;
-        }
-
-        function toggleMusic() {
-            const audio = document.getElementById('bg-music');
-            const btn = document.getElementById('music-play-btn');
-            const status = document.getElementById('music-status');
-
-            if (audio.paused) {
-                audio.play().then(() => {
-                    btn.innerText = "⏸️ Pause";
-                    status.innerText = "Status: Playing";
-                }).catch(e => alert("Click Play again to start audio: " + e.message));
-            } else {
-                audio.pause();
-                btn.innerText = "▶️ Play";
-                status.innerText = "Status: Paused";
-            }
-        }
-
-        function playRandomMusic() {
-            let nextIndex;
-            do {
-                nextIndex = Math.floor(Math.random() * playlist.length);
-            } while (nextIndex === currentTrackIndex && playlist.length > 1);
-
-            playTrack(nextIndex);
-            const audio = document.getElementById('bg-music');
-            audio.play().then(() => {
-                document.getElementById('music-play-btn').innerText = "⏸️ Pause";
-                document.getElementById('music-status').innerText = "Status: Playing";
-            });
-        }
-
-        function adjustVolume(val) {
-            const audio = document.getElementById('bg-music');
-            audio.volume = val;
-        }
 
         // --- TIME & ALARM CHECKER ---
         function updateTime() {
@@ -397,7 +303,6 @@
                 localStorage.removeItem(STORAGE_KEY_TASKS);
             }
 
-            initMusic();
             renderWorkflow();
             renderHistory();
             updateTime();
@@ -503,7 +408,7 @@
                 return null;
             }
 
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${key}`;
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`;
             
             try {
                 const response = await fetch(url, {
