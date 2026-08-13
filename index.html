@@ -101,13 +101,13 @@
             margin-bottom: 12px;
         }
 
-        .audio-controls, .filter-controls {
+        .audio-controls, .filter-controls, .backup-controls {
             display: flex;
             gap: 8px;
             margin-bottom: 8px;
             flex-wrap: wrap;
         }
-        .audio-controls button, .filter-controls button { 
+        .audio-controls button, .filter-controls button, .backup-controls button { 
             margin: 0; 
             font-size: 0.85rem; 
             padding: 8px 12px; 
@@ -165,7 +165,13 @@
         <div id="pattern-analysis-output"></div>
         <div id="history-list" class="subtitle" style="margin-top:12px;">No archived logs yet.</div>
         
-        <button onclick="clearHistory()" class="btn-danger" style="font-size:0.8rem; padding:6px; margin-top:12px;">Clear History</button>
+        <!-- Backup & Clear History Controls -->
+        <div class="backup-controls" style="margin-top:12px;">
+            <button onclick="exportHistoryBackup()" class="btn-secondary">📥 Export Backup</button>
+            <button onclick="document.getElementById('import-file').click()" class="btn-secondary">📤 Import Backup</button>
+            <input type="file" id="import-file" style="display:none" accept=".json" onchange="importHistoryBackup(event)">
+            <button onclick="clearHistory()" class="btn-danger">Clear History</button>
+        </div>
     </div>
 
     <script>
@@ -408,7 +414,7 @@
                 return null;
             }
 
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${key}`;
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`;
             
             try {
                 const response = await fetch(url, {
@@ -591,6 +597,40 @@
             if (analysis) {
                 outputDiv.innerHTML = `<div class="advice-box"><strong>💡 AI Performance & Improvement Analysis:</strong><br>${analysis.replace(/\n/g, '<br>')}</div>`;
             }
+        }
+
+        // --- IMPORT & EXPORT BACKUP FUNCTIONS ---
+        function exportHistoryBackup() {
+            const history = localStorage.getItem(STORAGE_KEY_HISTORY) || '[]';
+            const blob = new Blob([history], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `JKK_Productivity_Backup_${getTodayDateString()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function importHistoryBackup(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const importedData = JSON.parse(e.target.result);
+                    if (Array.isArray(importedData)) {
+                        localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(importedData));
+                        alert('Backup successfully imported!');
+                        renderHistory();
+                    } else {
+                        alert('Invalid backup file format.');
+                    }
+                } catch (err) {
+                    alert('Error reading backup file: ' + err.message);
+                }
+            };
+            reader.readAsText(file);
         }
 
         function clearHistory() {
